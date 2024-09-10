@@ -25,7 +25,7 @@ https://hackbox.microsoft.com/hackathons/hackathon2024/project/62912
     cd ./hack2024_knaigra/infra
     ```
 
-1. Rename the [.envtemplate](./.envtemplate) file to `.env` and fill in the necessary environment variables. Here is the detailed explanation of the environment variables:
+1. Rename the [.envtemplate](./.envtemplate) file to `.env` and fill in the necessary environment variables.
    
 1. Review [setup-infra.sh](./infra/setup-infra.sh) script and see if you want to adjust the derived naming of variable names of Azure/Fabric resources.
 

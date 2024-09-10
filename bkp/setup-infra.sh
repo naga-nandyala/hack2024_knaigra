@@ -4,9 +4,13 @@ source .env
 ## Environment variables
 base_name="$BASE_NAME"
 location="$LOCATION"
+adls_gen2_connection_id="$ALDS_GEN2_CONNECTION_ID"
 subscription_id="$SUBSCRIPTION_ID"
 
 
+# Variable set based on Terraform output
+tf_storage_account_name=""
+tf_storage_container_name=""
 
 deploy_terraform_resources() {
     cd "$1" || exit
@@ -18,7 +22,8 @@ deploy_terraform_resources() {
         -auto-approve \
         -var "subscription_id=$subscription_id" \
         -var "base_name=$base_name" \
-        -var "location=$location"        
+        -var "location=$location" \
+        -var "fabric_capacity_admin=$user_principal_name"
 
     tf_storage_container_name=$(terraform output --raw storage_container_name)    
 }

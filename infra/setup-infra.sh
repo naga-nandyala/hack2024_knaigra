@@ -21,11 +21,13 @@ fabric_api_endpoint="https://api.fabric.microsoft.com/v1"
 fabric_workspace_name="ws-$base_name"
 onelake_name="onelake"
 lakehouse_name="lh_main"
+eventhouse_name="eh_main"
 alds_gen2_shortcut_name="sc_adls_gen2_main"
 alds_gen2_shortcut_path="Files"
 environment_name="env_$base_name"
 environment_desc="Default Fabric environment for '$base_name' project"
 lakehouse_desc="Lakehouse for '$base_name' project"
+eventhouse_desc="Eventhouse for '$base_name' project"
 notebook_names=("nb-city-safety" "nb-covid-data")
 pipeline_names=("pl-covid-data")
 
@@ -45,6 +47,7 @@ deploy_terraform_resources() {
     tf_storage_container_name=$(terraform output --raw storage_container_name) 
     tf_fabric_capacity_name=$(terraform output --raw fabric_capacity_name)    
     tf_security_group_name=$(terraform output --raw security_group_display_name)
+    tf_security_group_name_chevron=$(terraform output --raw security_group_display_name_chevron)
     tf_storage_account_url=$(terraform output --raw storage_account_primary_dfs_endpoint)     
 }
 
@@ -89,9 +92,6 @@ function get_workspace_identity() {
     get_workspace_url="$fabric_api_endpoint/workspaces/$workspace_id"
     workspace=$(curl -s -H "Authorization: Bearer $fabric_bearer_token" "$get_workspace_url")
     identity=$(echo "$workspace" | jq -r '.workspaceIdentity.applicationId')
-
-# naga
-    echo "\n naga - workspace=$workspace"
 
     echo "$identity"
 }
@@ -144,6 +144,18 @@ function lakehouse_payload() {
     "displayName": "$display_name",
     "description": "$description",
     "type": "Lakehouse"
+}
+EOF
+}
+
+function eventhouse_payload() {
+    display_name=$1
+    description=$2
+    cat <<EOF
+{
+    "displayName": "$display_name",
+    "description": "$description",
+    "type": "Eventhouse"
 }
 EOF
 }
@@ -202,6 +214,9 @@ function create_item() {
         "Lakehouse")
             create_item_body=$(lakehouse_payload "$display_name" "$description")
             ;;
+        "Eventhouse")
+            create_item_body=$(eventhouse_payload "$display_name" "$description")
+            ;;            
         "Notebook")
             create_item_body=$(notebook_payload "$display_name" "$payload")
             ;;
@@ -258,6 +273,41 @@ EOF
         fi
     fi
 }
+
+
+
+
+function add_workspace_role() {
+    workspace_id=$1
+    group_name=$2
+    role_name=$3
+    add_role_url="$fabric_api_endpoint/workspaces/$workspace_id/roleAssignments"
+    group_id=$(az ad group show --group "$group_name" --query id -o tsv)
+    add_role_body=$(cat <<EOF
+{
+    "principal": {
+        "id": "$group_id",
+        "type": "Group"
+    },
+    "role": "$role_name"
+}
+EOF
+)
+    response=$(curl -s -X POST -H "Authorization: Bearer $fabric_bearer_token" -H "Content-Type: application/json" -d "$add_role_body" "$add_role_url")
+    workspace_role_assignment_id=$(echo "$response" | jq -r '.id')
+    if [[ -n "$workspace_role_assignment_id" ]] && [[ "$workspace_role_assignment_id" != "null" ]]; then
+        echo "[I] Added security group '$group_name' as $role_name of the workspace."
+    else
+        error_code=$(echo "$response" | jq -r '.errorCode')
+        if [[ "$error_code" = "PrincipalAlreadyHasWorkspaceRolePermissions" ]]; then
+            echo "[W] Security group '$group_name' already has a role assigned in the workspace. Please review it manually."
+        else
+            echo "[E] Adding security group '$group_name' as $role_name of the workspace failed."
+            echo "[E] $response"
+        fi
+    fi
+}
+
 
 function get_adls_gen2_connection_object() {
     connection_id=$1
@@ -381,6 +431,17 @@ else
     lakehouse_id=$(get_item_by_name_type "$fabric_workspace_id" "Lakehouse" "$lakehouse_name")
 fi
 
+
+echo "[I] ############ Eventhouse Creation ############"
+eventhouse_id=$(get_item_by_name_type "$fabric_workspace_id" "Eventhouse" "$eventhouse_name")
+if [[ -n "$eventhouse_id" ]]; then
+    echo "[I] Eventhouse $eventhouse_name ($eventhouse_id) already exists."
+else
+    create_item "$fabric_workspace_id" "Eventhouse" "$eventhouse_name" "$eventhouse_desc" ""
+    eventhouse_id=$(get_item_by_name_type "$fabric_workspace_id" "Eventhouse" "$eventhouse_name")
+fi
+
+
 echo "[I] ############ Provisioning Workspace Identity ############"
 workspace_identity_app_id=$(get_workspace_identity "$fabric_workspace_id")
 if [[ -n "$workspace_identity_app_id" ]]; then
@@ -390,8 +451,11 @@ else
 fi
 
 
-echo "[I] ############ Adding entra security group as workspace admin ############"
-add_workspace_admin "$fabric_workspace_id" "$tf_security_group_name"
+echo "[I] ############ Adding entra security group as workspace contributor ############"
+# add_workspace_admin "$fabric_workspace_id" "$tf_security_group_name"
+# add_workspace_role "$fabric_workspace_id" "$tf_security_group_name" "Admin"
+add_workspace_role "$fabric_workspace_id" "$tf_security_group_name" "Contributor"
+add_workspace_role "$fabric_workspace_id" "$tf_security_group_name_chevron" "Contributor"
 
 
 

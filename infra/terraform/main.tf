@@ -179,7 +179,7 @@ resource "azurerm_cosmosdb_sql_container" "container" {
 }
 
 resource "azurerm_api_management" "apim" {
-  name                = "apim${var.base_name}"
+  name                = "apim1${var.base_name}"
   location            = var.location
   resource_group_name = azurerm_resource_group.rg.name
   publisher_name      = "Your Publisher Name"

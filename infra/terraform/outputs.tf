@@ -37,3 +37,7 @@ output "security_group_id" {
 output "security_group_display_name" {
   value = azuread_group.sg.display_name
 }
+
+output "security_group_display_name_chevron" {
+  value = azuread_group.sg-chevron.display_name
+}

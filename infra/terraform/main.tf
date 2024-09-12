@@ -15,13 +15,13 @@ provider "azapi" {
 terraform {
   required_version = ">= 1.0"
 
-  required_providers { 
+  required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">= 3.64.0"  # Update to the latest or appropriate version
+      version = ">= 3.64.0" # Update to the latest or appropriate version
     }
     azapi = {
-      source  = "azure/azapi"
+      source = "azure/azapi"
     }
     random = {
       source  = "hashicorp/random"
@@ -77,6 +77,12 @@ data "azurerm_role_definition" "contributor_role" {
   name = "Contributor"
 }
 
+data "azurerm_role_definition" "storage_blob_contributor_role" {
+  name = "Storage Blob Data Contributor"
+}
+
+
+
 resource "azurerm_role_assignment" "role_assignment_sg" {
   principal_id         = azuread_group.sg.id
   role_definition_name = data.azurerm_role_definition.contributor_role.name
@@ -90,13 +96,27 @@ resource "azurerm_role_assignment" "role_assignment_sg_chevron" {
 }
 
 
+resource "azurerm_role_assignment" "role_assignment_sg_blob" {
+  principal_id         = azuread_group.sg.id
+  role_definition_name = data.azurerm_role_definition.storage_blob_contributor_role.name
+  scope                = azurerm_resource_group.rg.id
+}
+
+resource "azurerm_role_assignment" "role_assignment_sg_chevron_blob" {
+  principal_id         = azuread_group.sg-chevron.id
+  role_definition_name = data.azurerm_role_definition.storage_blob_contributor_role.name
+  scope                = azurerm_resource_group.rg.id
+}
+
+
+
 resource "azurerm_storage_account" "storage" {
   name                     = "st${var.base_name}"
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = var.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
-  is_hns_enabled           = true  
+  is_hns_enabled           = true
 }
 
 resource "azurerm_storage_container" "container" {
@@ -106,13 +126,49 @@ resource "azurerm_storage_container" "container" {
 }
 
 resource "azurerm_key_vault" "kv" {
-  name                        = "kv1${var.base_name}"
-  location                    = var.location
-  resource_group_name         = azurerm_resource_group.rg.name
-  tenant_id                   = data.azurerm_client_config.current.tenant_id
-  sku_name                    = "standard"
-  purge_protection_enabled    = false
+  name                     = "kv1${var.base_name}"
+  location                 = var.location
+  resource_group_name      = azurerm_resource_group.rg.name
+  tenant_id                = data.azurerm_client_config.current.tenant_id
+  sku_name                 = "standard"
+  purge_protection_enabled = false
 }
+
+
+
+data "azuread_client_config" "current" {}
+
+
+resource "azurerm_key_vault_access_policy" "kv_access_policy_1" {
+  key_vault_id = azurerm_key_vault.kv.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azuread_client_config.current.object_id
+  secret_permissions = [
+    "Set",
+    "Get",
+    "Delete",
+    "Purge",
+    "Recover",
+    "List"
+  ]
+}
+
+
+
+resource "azurerm_key_vault_access_policy" "kv_access_policy" {
+  key_vault_id       = azurerm_key_vault.kv.id
+  tenant_id          = data.azurerm_client_config.current.tenant_id
+  object_id          = azuread_group.sg.object_id
+  secret_permissions = ["Get", "List"]
+}
+
+resource "azurerm_key_vault_access_policy" "kv_access_policy_chevron" {
+  key_vault_id       = azurerm_key_vault.kv.id
+  tenant_id          = data.azurerm_client_config.current.tenant_id
+  object_id          = azuread_group.sg-chevron.object_id
+  secret_permissions = ["Get", "List"]
+}
+
 
 resource "azurerm_application_insights" "appinsights" {
   name                = "appinsights${var.base_name}"
@@ -128,17 +184,17 @@ resource "azurerm_storage_account" "ml_storage" {
   location                 = var.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
-  is_hns_enabled           = false  # HNS disabled
+  is_hns_enabled           = false # HNS disabled
 }
 
 resource "azurerm_machine_learning_workspace" "azureml" {
-  name                = "aml${var.base_name}"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = var.location
-  sku_name            = "Basic"
+  name                    = "aml${var.base_name}"
+  resource_group_name     = azurerm_resource_group.rg.name
+  location                = var.location
+  sku_name                = "Basic"
   application_insights_id = azurerm_application_insights.appinsights.id
   key_vault_id            = azurerm_key_vault.kv.id
-  storage_account_id      = azurerm_storage_account.ml_storage.id  # Use the new storage account
+  storage_account_id      = azurerm_storage_account.ml_storage.id # Use the new storage account
 
   identity {
     type = "SystemAssigned"
@@ -194,7 +250,7 @@ module "capacity" {
   location          = azurerm_resource_group.rg.location
   admin_email       = var.fabric_capacity_admin
   sku               = "F2"
-  tags              = {environment: "dev"}
+  tags              = { environment : "dev" }
 }
 
 
@@ -206,7 +262,7 @@ resource "azurerm_storage_account" "aihub_storage" {
   location                 = var.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
-  is_hns_enabled           = false  # HNS disabled for AI Hub
+  is_hns_enabled           = false # HNS disabled for AI Hub
 }
 
 // AzAPI AIServices
@@ -288,9 +344,9 @@ resource "azapi_resource" "AIServicesConnection" {
 
   body = jsonencode({
     properties = {
-      category   = "AIServices"
-      target     = jsondecode(azapi_resource.AIServicesResource.output).properties.endpoint
-      authType   = "AAD"
+      category      = "AIServices"
+      target        = jsondecode(azapi_resource.AIServicesResource.output).properties.endpoint
+      authType      = "AAD"
       isSharedToAll = true
       metadata = {
         ApiType    = "Azure"
@@ -304,10 +360,10 @@ resource "azapi_resource" "AIServicesConnection" {
 
 // CONTAINER REGISTRY
 resource "azurerm_container_registry" "acr" {
-  name                     = "acr${var.base_name}"
-  resource_group_name      = azurerm_resource_group.rg.name
-  location                 = azurerm_resource_group.rg.location
-  sku                      = "Premium"
-  admin_enabled            = true
+  name                = "acr${var.base_name}"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  sku                 = "Premium"
+  admin_enabled       = true
 }
 
